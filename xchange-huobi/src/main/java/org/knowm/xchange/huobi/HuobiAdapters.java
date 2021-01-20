@@ -114,16 +114,20 @@ public class HuobiAdapters {
     BigDecimal minQty =
         metadata == null
             ? null
-            : metadata
-                .getMinimumAmount()
-                .setScale(pair.getAmountPrecision(), RoundingMode.DOWN);
+            : metadata.getMinimumAmount().setScale(pair.getAmountPrecision(), RoundingMode.DOWN);
     FeeTier[] feeTiers = metadata == null ? null : metadata.getFeeTiers();
     return new CurrencyPairMetaData(
         fee,
-        minQty, // Min amount
-        null, // Max amount
-        new Integer(pair.getPricePrecision()), // Price scale
-        feeTiers);
+        minQty,
+        null,
+        null,
+        null,
+        new Integer(pair.getAmountPrecision()),
+        new Integer(pair.getPricePrecision()),
+        feeTiers,
+        null,
+        null,
+        true);
   }
 
   private static Currency adaptCurrency(String currency) {
@@ -185,6 +189,15 @@ public class HuobiAdapters {
     Order order = null;
     OrderType orderType = adaptOrderType(openOrder.getType());
     CurrencyPair currencyPair = adaptCurrencyPair(openOrder.getSymbol());
+    BigDecimal openOrderAvgPrice;
+    if (openOrder.getFieldAmount().compareTo(BigDecimal.ZERO) == 0) {
+      openOrderAvgPrice = BigDecimal.ZERO;
+    } else {
+      openOrderAvgPrice =
+          openOrder
+              .getFieldCashAmount()
+              .divide(openOrder.getFieldAmount(), 8, BigDecimal.ROUND_DOWN);
+    }
     if (openOrder.isMarket()) {
       order =
           new MarketOrder(
@@ -193,9 +206,7 @@ public class HuobiAdapters {
               currencyPair,
               String.valueOf(openOrder.getId()),
               openOrder.getCreatedAt(),
-              openOrder
-                  .getFieldCashAmount()
-                  .divide(openOrder.getFieldAmount(), 8, BigDecimal.ROUND_DOWN),
+              openOrderAvgPrice,
               openOrder.getFieldAmount(),
               openOrder.getFieldFees(),
               adaptOrderStatus(openOrder.getState()),
@@ -210,9 +221,7 @@ public class HuobiAdapters {
               String.valueOf(openOrder.getId()),
               openOrder.getCreatedAt(),
               openOrder.getPrice(),
-              openOrder
-                  .getFieldCashAmount()
-                  .divide(openOrder.getFieldAmount(), 8, BigDecimal.ROUND_DOWN),
+              openOrderAvgPrice,
               openOrder.getFieldAmount(),
               openOrder.getFieldFees(),
               adaptOrderStatus(openOrder.getState()),
@@ -228,9 +237,7 @@ public class HuobiAdapters {
               openOrder.getCreatedAt(),
               openOrder.getStopPrice(),
               openOrder.getPrice(),
-              openOrder
-                  .getFieldCashAmount()
-                  .divide(openOrder.getFieldAmount(), 8, BigDecimal.ROUND_DOWN),
+              openOrderAvgPrice,
               openOrder.getFieldAmount(),
               openOrder.getFieldFees(),
               adaptOrderStatus(openOrder.getState()),
@@ -238,14 +245,7 @@ public class HuobiAdapters {
               openOrder.getOperator().equals("lte") ? Intention.STOP_LOSS : Intention.TAKE_PROFIT);
     }
 
-    if (openOrder.getFieldAmount().compareTo(BigDecimal.ZERO) == 0) {
-      order.setAveragePrice(BigDecimal.ZERO);
-    } else {
-      order.setAveragePrice(
-          openOrder
-              .getFieldCashAmount()
-              .divide(openOrder.getFieldAmount(), 8, BigDecimal.ROUND_DOWN));
-    }
+    order.setAveragePrice(openOrderAvgPrice);
     return order;
   }
 
@@ -387,12 +387,10 @@ public class HuobiAdapters {
   /**
    * List of possible deposit state
    *
-   * State Description
-   * unknown On-chain transfer has not been received
-   * confirming On-chain transfer waits for first confirmation
-   * confirmed On-chain transfer confirmed for at least one block
-   * safe Multiple on-chain confirmation happened
-   * orphan Confirmed but currently in an orphan branch
+   * <p>State Description unknown On-chain transfer has not been received confirming On-chain
+   * transfer waits for first confirmation confirmed On-chain transfer confirmed for at least one
+   * block safe Multiple on-chain confirmation happened orphan Confirmed but currently in an orphan
+   * branch
    */
   private static Status adaptDepostStatus(String state) {
     switch (state) {
